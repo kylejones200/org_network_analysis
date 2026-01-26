@@ -5,6 +5,33 @@ Centralized configuration to eliminate magic numbers and maintain consistency.
 """
 
 from typing import Dict
+import os
+
+
+# ============================================================================
+# FLASK CONFIGURATION
+# ============================================================================
+
+
+class Config:
+    """Flask application configuration."""
+    
+    # Database
+    DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///orgnet.db')
+    
+    # Flask settings
+    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+    DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
+    
+    # API settings
+    API_HOST = os.getenv('API_HOST', '0.0.0.0')
+    API_PORT = int(os.getenv('API_PORT', '5000'))
+    
+    # CORS
+    CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')
+    
+    # Rate limiting
+    RATELIMIT_STORAGE_URL = os.getenv('RATELIMIT_STORAGE_URL', 'memory://')
 
 
 # ============================================================================

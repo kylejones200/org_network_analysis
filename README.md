@@ -44,7 +44,7 @@ The application follows a clean 4-layer architecture pattern:
 ### Prerequisites
 
 - Python 3.12 or higher
-- pip (Python package manager)
+- [uv](https://github.com/astral-sh/uv) package manager
 - Ubuntu (recommended)
 
 ### Setup
@@ -54,16 +54,12 @@ The application follows a clean 4-layer architecture pattern:
 cd orgnet
 ```
 
-2. Create a virtual environment:
+2. Install dependencies:
 ```bash
-python -m venv venv
-source venv/bin/activate
+uv sync
 ```
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
+This will create a virtual environment and install all dependencies automatically.
 
 4. Create a `.env` file (copy from `env.example`):
 ```bash
@@ -79,7 +75,7 @@ cp env.example .env
 alembic upgrade head
 
 # Or run the app once to create tables
-python app.py
+uv run python -m app.app
 ```
 
 ## Quick Start
@@ -87,7 +83,7 @@ python app.py
 ### Start the API Server
 
 ```bash
-python app.py
+uv run python -m app.app
 ```
 
 The API will be available at `http://localhost:5000`

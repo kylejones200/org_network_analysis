@@ -26,13 +26,13 @@ tests/
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+uv sync
 
 # Run all tests
-pytest tests/ -v
+uv run pytest tests/ -v
 
 # Run with coverage
-pytest tests/ -v --cov=. --cov-report=html
+uv run pytest tests/ -v --cov=. --cov-report=html
 
 # View coverage report
 open htmlcov/index.html
@@ -42,16 +42,16 @@ open htmlcov/index.html
 
 ```bash
 # Unit tests only
-pytest tests/test_calculator.py tests/test_network_analyzer.py -v
+uv run pytest tests/test_calculator.py tests/test_network_analyzer.py -v
 
 # API tests only
-pytest tests/test_api.py -v
+uv run pytest tests/test_api.py -v
 
 # Integration tests only
-pytest tests/test_integration_e2e.py -v
+uv run pytest tests/test_integration_e2e.py -v
 
 # Performance tests only
-pytest tests/test_performance.py -v
+uv run pytest tests/test_performance.py -v
 ```
 
 ### Run Tests by Marker
@@ -252,7 +252,7 @@ The project uses GitHub Actions for CI/CD:
 **`.github/workflows/ci.yml`** - Main CI pipeline
 - Runs on: Push to main/develop, Pull requests
 - Jobs:
-  1. **Lint and Format** - Black, Flake8, MyPy
+  1. **Lint and Format** - Ruff, MyPy
   2. **Test** - Full test suite on Python 3.12
   3. **Security** - Safety, Bandit
   4. **Build** - Package building and validation
@@ -273,20 +273,20 @@ The project uses GitHub Actions for CI/CD:
 # Run the same checks as CI locally
 
 # 1. Linting
-black --check --line-length 100 .
-flake8 .
-mypy app.py --ignore-missing-imports
+uv run ruff format --check .
+uv run ruff check .
+uv run mypy app --ignore-missing-imports
 
 # 2. Tests
-pytest tests/ -v --cov=. --cov-report=term-missing
+uv run pytest tests/ -v --cov=. --cov-report=term-missing
 
 # 3. Security
-safety check
-bandit -r . -f screen
+uv run safety check
+uv run bandit -r . -f screen
 
 # 4. Build
-python -m build
-twine check dist/*
+uv run python -m build
+uv run twine check dist/*
 
 # 5. Docker
 docker-compose build

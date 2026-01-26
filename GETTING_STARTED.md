@@ -32,7 +32,7 @@ docker-compose logs -f api
 
 That's it! The API is now running at `http://localhost:5000`.
 
-### Option 2: Local Python
+### Option 2: Local Python with uv
 
 For development or if you prefer running Python directly.
 
@@ -40,21 +40,17 @@ For development or if you prefer running Python directly.
 # Navigate to project
 cd orgnet
 
-# Create virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (creates .venv automatically)
+uv sync
 
 # Copy environment config
 cp env.example .env
 
 # Initialize database
-alembic upgrade head
+uv run alembic upgrade head
 
 # Start server
-python -m app.app
+uv run python -m app.app
 ```
 
 The API will be at `http://localhost:5000`.
@@ -66,13 +62,12 @@ Run the examples script to see it in action:
 ```bash
 # In a new terminal (with server running)
 cd orgnet
-source venv/bin/activate  # If using local Python
 
 # Generate sample data
-python -c "from sqlalchemy import create_engine; from sqlalchemy.orm import sessionmaker; from app.sample_data import generate_sample_data; engine = create_engine('sqlite:///orgnet.db'); Session = sessionmaker(bind=engine); session = Session(); generate_sample_data(session, num_teams=3)"
+uv run python -c "from sqlalchemy import create_engine; from sqlalchemy.orm import sessionmaker; from app.sample_data import generate_sample_data; engine = create_engine('sqlite:///orgnet.db'); Session = sessionmaker(bind=engine); session = Session(); generate_sample_data(session, num_teams=3)"
 
 # Run examples
-python -m app.examples
+uv run python -m app.examples
 ```
 
 You should see output like:
@@ -299,12 +294,10 @@ lsof -ti:5000 | xargs kill -9
 ```
 
 ### "Module not found"
-Make sure virtual environment is activated:
+Make sure dependencies are installed:
 ```bash
-source venv/bin/activate
+uv sync
 ```
-
-Then reinstall: `pip install -r requirements.txt`
 
 ### "Rate limit exceeded"
 You've hit the API rate limit. Wait for the reset time shown in `X-RateLimit-Reset` header.
@@ -359,11 +352,11 @@ docker-compose up -d --scale api=3
 ### With Gunicorn (if not using Docker)
 
 ```bash
-# Install gunicorn
-pip install gunicorn
+# Install gunicorn (if not already in dependencies)
+uv add gunicorn
 
 # Run with 4 workers
-gunicorn -w 4 -b 0.0.0.0:5000 app:create_app
+uv run gunicorn -w 4 -b 0.0.0.0:5000 app:create_app
 ```
 
 ## Resources
@@ -393,4 +386,4 @@ This application is based on research from MIT's Human Dynamics Laboratory:
 
 **You're ready to go!** 🚀
 
-Start with: `docker-compose up -d` or `python -m app.app`
+Start with: `docker-compose up -d` or `uv run python -m app.app`

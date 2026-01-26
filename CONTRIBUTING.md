@@ -6,6 +6,7 @@ Thank you for your interest in contributing! This guide will help you get starte
 
 ### Prerequisites
 - Python 3.12 or higher
+- [uv](https://github.com/astral-sh/uv) package manager
 - Ubuntu (recommended)
 - Docker and Docker Compose (for full stack)
 - Git
@@ -18,16 +19,12 @@ git clone <repository-url>
 cd orgnet
 ```
 
-2. **Create virtual environment**
+2. **Install dependencies**
 ```bash
-python -m venv venv
-source venv/bin/activate
+uv sync
 ```
 
-3. **Install dependencies**
-```bash
-pip install -r requirements.txt
-```
+This will create a virtual environment and install all dependencies automatically.
 
 4. **Copy environment configuration**
 ```bash
@@ -42,12 +39,12 @@ python -c "from app.database import init_db; init_db('sqlite:///orgnet.db')"
 
 6. **Run tests**
 ```bash
-pytest tests/ -v
+uv run pytest tests/ -v
 ```
 
 7. **Start development server**
 ```bash
-python -m app.app
+uv run python -m app.app
 ```
 
 ## Running with Docker
@@ -62,8 +59,7 @@ The API will be available at `http://localhost:5000`
 
 ### Code Style
 - Follow PEP 8
-- Use Black for formatting: `black .`
-- Run linting: `flake8 .`
+- Use Ruff for formatting and linting: `uv run ruff format .` and `uv run ruff check .`
 - Type hints are encouraged
 
 ### Testing
@@ -82,8 +78,9 @@ The API will be available at `http://localhost:5000`
 2. Make your changes
 3. Write/update tests
 4. Update documentation if needed
-5. Run tests: `pytest tests/`
-6. Push and create PR
+5. Run tests: `uv run pytest tests/`
+6. Run linting: `uv run ruff check .`
+7. Push and create PR
 
 ## Project Structure
 
