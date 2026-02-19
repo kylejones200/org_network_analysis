@@ -129,17 +129,14 @@ uv add --dev some-dev-package
 4. **Modern**: Uses PEP 621 standard for project metadata
 5. **Automatic**: No need to manually manage virtual environments
 
-## Requirements.txt (Legacy)
+## Generating requirements.txt (if needed)
 
-The `requirements.txt` file is kept for reference but is **no longer the source of truth**. 
-All dependencies are now managed in `pyproject.toml` and locked in `uv.lock`.
-
-If you need to use `requirements.txt` for compatibility, you can generate it:
+If you need a `requirements.txt` file for compatibility with other tools, you can generate it:
 ```bash
 uv pip compile pyproject.toml -o requirements.txt
 ```
 
-However, we recommend using `uv sync` directly.
+However, we recommend using `uv sync` directly, as `pyproject.toml` and `uv.lock` are the source of truth.
 
 ## Troubleshooting
 

@@ -332,7 +332,7 @@ orgnet/
 ├── export_utils.py            # Export utilities
 ├── sample_data.py             # Sample data generator
 ├── examples.py                # Usage examples
-├── requirements.txt           # Python dependencies
+├── uv.lock                    # Locked dependencies (uv)
 ├── Dockerfile                 # Docker container
 ├── docker-compose.yml         # Multi-container setup
 ├── alembic.ini                # Migration config
