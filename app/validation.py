@@ -148,6 +148,20 @@ class NetworkAnalysisParams(BaseModel):
     days: Optional[Annotated[int, Field(ge=1, le=365)]] = 30
 
 
+def _sanitize_for_json(obj):
+    """Convert an object to a JSON-serializable form. Handles Pydantic error dicts
+    whose ctx may contain exception objects (e.g. ValueError)."""
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, (list, tuple)):
+        return [_sanitize_for_json(x) for x in obj]
+    if isinstance(obj, dict):
+        return {k: _sanitize_for_json(v) for k, v in obj.items()}
+    if hasattr(obj, "isoformat"):  # datetime
+        return obj.isoformat()
+    return str(obj)
+
+
 # Export validation function
 def validate_request(schema_class, data: dict):
     """
@@ -156,12 +170,13 @@ def validate_request(schema_class, data: dict):
     Returns:
         Tuple of (validated_data, error_dict)
         If valid: (data, None)
-        If invalid: (None, errors)
+        If invalid: (None, errors) - errors are JSON-serializable
     """
     try:
         validated = schema_class(**data)
         return validated, None
     except Exception as e:
         if hasattr(e, "errors"):
-            return None, e.errors()
+            raw_errors = e.errors()
+            return None, _sanitize_for_json(raw_errors)
         return None, [{"msg": str(e)}]

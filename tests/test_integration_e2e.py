@@ -9,20 +9,20 @@ import pytest
 import json
 from datetime import datetime, timedelta, timezone
 from app import create_app
-from app.database import init_db
+from app.config import Config
+
+
+class TestConfig(Config):
+    """Config with in-memory DB for isolated tests."""
+    DATABASE_URL = "sqlite:///:memory:"
+    TESTING = True
+    SECRET_KEY = "test-secret-key"
 
 
 @pytest.fixture
 def app():
     """Create Flask app for testing"""
-    app = create_app()
-    app.config["TESTING"] = True
-    app.config["DATABASE_URL"] = "sqlite:///:memory:"
-    
-    with app.app_context():
-        init_db(app.config["DATABASE_URL"])
-    
-    yield app
+    return create_app(config_class=TestConfig)
 
 
 @pytest.fixture
@@ -250,14 +250,27 @@ class TestCompleteTeamWorkflow:
         )
         assert update_response.status_code == 200
 
-        # Step 11: Delete a member
-        delete_member_response = client.delete(f"/api/v1/members/{members[4]['id']}")
+        # Step 11: Add a member with no communications, then delete them
+        extra_member_response = client.post(
+            "/api/v1/members",
+            data=json.dumps({
+                "name": "Temp Member",
+                "email": "temp@company.com",
+                "team_id": team_id,
+                "role": "Observer",
+            }),
+            content_type="application/json",
+        )
+        assert extra_member_response.status_code == 201
+        temp_member_id = json.loads(extra_member_response.data)["id"]
+
+        delete_member_response = client.delete(f"/api/v1/members/{temp_member_id}")
         assert delete_member_response.status_code == 200
 
         # Verify member deleted
         members_check = client.get(f"/api/v1/members?team_id={team_id}")
         updated_members = json.loads(members_check.data)
-        assert len(updated_members) == 4
+        assert len(updated_members) == 5
 
         # Step 12: Clean up - delete team
         delete_response = client.delete(f"/api/v1/teams/{team_id}")
@@ -380,6 +393,14 @@ class TestMultiTeamScenario:
         assert metrics_a["exploration"]["cross_team_communications"] == 2
         assert metrics_a["exploration"]["exploration_score"] > 0
 
+        # Calculate metrics for Team B so both teams appear in metrics/all
+        calc_b_response = client.post(
+            f"/api/v1/calculate/{team_b_id}",
+            data=json.dumps({"days": 30}),
+            content_type="application/json"
+        )
+        assert calc_b_response.status_code == 200
+
         # Compare all teams
         all_teams_response = client.get("/api/v1/metrics/all")
         all_teams = json.loads(all_teams_response.data)
@@ -394,12 +415,13 @@ class TestRateLimitingE2E:
         E2E Test: Verify rate limits work across requests
         Note: This test may be slow due to rate limiting
         """
-        # Create a team
+        # Create a team (unique name to avoid conflict)
         team_response = client.post(
             "/api/v1/teams",
-            data=json.dumps({"name": "Test Team", "description": "Test"}),
-            content_type="application/json"
+            data=json.dumps({"name": "Rate Limit Test Team", "description": "Test"}),
+            content_type="application/json",
         )
+        assert team_response.status_code == 201
         team_id = json.loads(team_response.data)["id"]
 
         # Health endpoint should NOT be rate limited

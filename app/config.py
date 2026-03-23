@@ -6,6 +6,29 @@ Centralized configuration to eliminate magic numbers and maintain consistency.
 
 from typing import Dict
 import os
+import warnings
+
+# Load .env file if present (python-dotenv)
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# Defaults that must be overridden in production
+_DEFAULT_SECRET_KEY = "dev-secret-key-change-in-production"
+
+
+def _get_secret_key() -> str:
+    key = os.getenv("SECRET_KEY", _DEFAULT_SECRET_KEY)
+    debug = os.getenv("DEBUG", "False").lower() == "true"
+    if key == _DEFAULT_SECRET_KEY and not debug:
+        warnings.warn(
+            "SECRET_KEY is using default value. Set SECRET_KEY in environment for production.",
+            UserWarning,
+            stacklevel=2,
+        )
+    return key
 
 
 # ============================================================================
@@ -15,23 +38,23 @@ import os
 
 class Config:
     """Flask application configuration."""
-    
+
     # Database
-    DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///orgnet.db')
-    
+    DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///orgnet.db")
+
     # Flask settings
-    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
-    DEBUG = os.getenv('DEBUG', 'False').lower() == 'true'
-    
+    SECRET_KEY = _get_secret_key()
+    DEBUG = os.getenv("DEBUG", "False").lower() == "true"
+
     # API settings
-    API_HOST = os.getenv('API_HOST', '0.0.0.0')
-    API_PORT = int(os.getenv('API_PORT', '5000'))
-    
-    # CORS
-    CORS_ORIGINS = os.getenv('CORS_ORIGINS', '*')
-    
+    API_HOST = os.getenv("API_HOST", "0.0.0.0")
+    API_PORT = int(os.getenv("API_PORT", "5000"))
+
+    # CORS: use explicit origins in production; * is for development only
+    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*")
+
     # Rate limiting
-    RATELIMIT_STORAGE_URL = os.getenv('RATELIMIT_STORAGE_URL', 'memory://')
+    RATELIMIT_STORAGE_URL = os.getenv("RATELIMIT_STORAGE_URL", "memory://")
 
 
 # ============================================================================

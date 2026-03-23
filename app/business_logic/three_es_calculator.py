@@ -251,9 +251,11 @@ class ThreeEsCalculator:
                 "members_exploring": 0,
             }
 
-        # Vectorized cross-team detection
-        is_cross_team = np.array([c.is_cross_team == 1 for c in all_communications])
-        sender_ids = np.array([c.sender_id for c in all_communications])
+        # Vectorized cross-team detection (dtype=bool for indexing compatibility)
+        is_cross_team = np.array(
+            [c.is_cross_team == 1 for c in all_communications], dtype=bool
+        )
+        sender_ids = np.array([c.sender_id for c in all_communications], dtype=np.int64)
 
         member_ids_set = {m.id for m in members}
         num_members = len(member_ids_set)

@@ -1,0 +1,61 @@
+# Deletion List
+
+Dead files, dead modules, unused code, duplicate logic.
+
+---
+
+## Removed ✓
+
+| Item | Path | Status |
+|------|------|--------|
+| `utils.py` | `app/utils.py` | Deleted |
+| `formatters.py` | `app/formatters.py` | Deleted |
+| `export_utils.py` | `app/export_utils.py` | Deleted |
+| `validators.py` | `app/validators.py` | Deleted |
+
+## Safe to Remove (After Verification)
+
+| Item | Path | Notes | Action |
+|------|------|-------|--------|
+| `setup.py` | `setup.py` | Minimal; pyproject.toml is source of truth | Can remove if build works without it |
+
+---
+
+## Move / Demote (Not Delete)
+
+| Item | Path | Notes | Action |
+|------|------|-------|--------|
+| `examples.py` | `scripts/examples.py` | Moved from app/ | Done ✓ |
+| `archive/` | `archive/*` | Historical docs (ROADMAP, etc.) | Keep; already in .gitignore |
+
+---
+
+## Unused Code (Inline)
+
+| Location | Description |
+|----------|-------------|
+| `app/app.py` | `ExternalTeamRepository` imported but not used |
+| `app/app.py` | `TeamUpdate` was imported but not used for update_team (fixed) |
+| `validation.py` | `MetricsCalculate` was defined but not used (fixed) |
+| `validation.py` | `NetworkAnalysisParams` — use for network endpoints (fixed) |
+
+---
+
+## Duplicate Logic
+
+| Pattern | Locations | Recommendation |
+|---------|-----------|----------------|
+| Date range parsing | `calculate_metrics`, `get_communications`, `analyze_network`, `detect_communities`, `analyze_centrality` | Extract to `date_utils.parse_date_range` and use consistently |
+| Recommendation rules | `formatters.py` — overlapping conditions | Remove if formatters deleted; or fix logic |
+
+---
+
+## Removal Plan
+
+1. **Phase 1:** Remove `validators.py` (redundant with Pydantic).
+2. **Phase 2:** Remove `utils.py` (deprecated; re-exports only).
+3. **Phase 3:** Decide on `formatters.py` and `export_utils.py` — delete or integrate.
+4. **Phase 4:** Move `examples.py` to scripts/ if desired.
+5. **Phase 5:** Remove `setup.py` if build backend does not require it (setuptools reads pyproject.toml).
+
+Verify after each removal: `uv run pytest` and `uv run ruff check .` pass.

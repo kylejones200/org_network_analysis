@@ -1,0 +1,14 @@
+# Dev overrides: volume mount for hot reload. Use with:
+#   docker-compose -f docker-compose.yml -f docker-compose.dev.yml up
+
+version: '3.8'
+
+services:
+  api:
+    volumes:
+      - ./:/app
+    environment:
+      - DATABASE_URL=postgresql://orgnet:${POSTGRES_PASSWORD:-changeme_in_production}@db:5432/orgnet
+    command: >
+      sh -c "python -c 'from app.database import init_db; import os; init_db(os.environ[\"DATABASE_URL\"])' 2>/dev/null || true &&
+             gunicorn --bind 0.0.0.0:5000 --workers 1 --timeout 60 --reload 'app:create_app()'"

@@ -21,19 +21,20 @@ class TestEnergyCalculation:
         assert result["total_communications"] == 0
         assert result["face_to_face_ratio"] == 0.0
 
-    def test_energy_increases_with_face_to_face(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_energy_increases_with_face_to_face(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Energy should be higher with face-to-face communications"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
         
-        # Add face-to-face communications
+        # Add face-to-face communications with timestamp in range
         for i in range(20):
             comm_repo.create(
                 sender_id=members[0].id,
                 receiver_id=members[1].id,
                 team_id=team.id,
                 communication_type="face-to-face",
-                duration_minutes=30
+                duration_minutes=30,
+                timestamp=mid_date,
             )
         
         result = calculator.calculate_energy(team.id, thirty_days_ago, now)
@@ -42,7 +43,7 @@ class TestEnergyCalculation:
         assert result["total_communications"] == 20
         assert result["face_to_face_ratio"] == 1.0
 
-    def test_energy_lower_with_email(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_energy_lower_with_email(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Energy with email only should be lower than face-to-face"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -54,13 +55,14 @@ class TestEnergyCalculation:
                 receiver_id=members[1].id,
                 team_id=team.id,
                 communication_type="face-to-face",
-                duration_minutes=30
+                duration_minutes=30,
+                timestamp=mid_date,
             )
         
         f2f_result = calculator.calculate_energy(team.id, thirty_days_ago, now)
         
         # Create new team for email test
-        from data_access.repositories import TeamRepository
+        from app.data_access.repositories import TeamRepository
         team_repo = TeamRepository(session)
         email_team = team_repo.create("Email Team", "Email only team")
         
@@ -71,7 +73,8 @@ class TestEnergyCalculation:
                 receiver_id=members[1].id,
                 team_id=email_team.id,
                 communication_type="email",
-                duration_minutes=30
+                duration_minutes=30,
+                timestamp=mid_date,
             )
         
         email_result = calculator.calculate_energy(email_team.id, thirty_days_ago, now)
@@ -79,7 +82,7 @@ class TestEnergyCalculation:
         # Face-to-face should have higher energy
         assert f2f_result["energy_score"] > email_result["energy_score"]
 
-    def test_energy_score_capped_at_100(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_energy_score_capped_at_100(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Energy score should never exceed 100"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -91,7 +94,8 @@ class TestEnergyCalculation:
                 receiver_id=members[(i + 1) % len(members)].id,
                 team_id=team.id,
                 communication_type="face-to-face",
-                duration_minutes=60
+                duration_minutes=60,
+                timestamp=mid_date,
             )
         
         result = calculator.calculate_energy(team.id, thirty_days_ago, now)
@@ -112,7 +116,7 @@ class TestEngagementCalculation:
         assert result["engagement_score"] == 0.0
         assert result["participation_rate"] == 0.0
 
-    def test_engagement_perfect_with_balanced_communication(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_engagement_perfect_with_balanced_communication(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Engagement should be high when all members communicate equally"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -128,7 +132,8 @@ class TestEngagementCalculation:
                             receiver_id=receiver.id,
                             team_id=team.id,
                             communication_type="face-to-face",
-                            duration_minutes=15
+                            duration_minutes=15,
+                            timestamp=mid_date,
                         )
         
         result = calculator.calculate_engagement(team.id, thirty_days_ago, now)
@@ -137,7 +142,7 @@ class TestEngagementCalculation:
         assert result["participation_rate"] == 1.0  # All members participated
         assert result["gini_coefficient"] < 0.2  # Very balanced
 
-    def test_engagement_low_with_dominated_communication(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_engagement_low_with_dominated_communication(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Engagement should be lower when one person dominates"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -148,7 +153,8 @@ class TestEngagementCalculation:
                 sender_id=members[0].id,
                 receiver_id=members[i % 4 + 1].id,
                 team_id=team.id,
-                communication_type="face-to-face"
+                communication_type="face-to-face",
+                timestamp=mid_date,
             )
         
         # Others send just a few
@@ -157,7 +163,8 @@ class TestEngagementCalculation:
                 sender_id=members[i].id,
                 receiver_id=members[0].id,
                 team_id=team.id,
-                communication_type="face-to-face"
+                communication_type="face-to-face",
+                timestamp=mid_date,
             )
         
         result = calculator.calculate_engagement(team.id, thirty_days_ago, now)
@@ -165,7 +172,7 @@ class TestEngagementCalculation:
         assert result["gini_coefficient"] > 0.5  # High inequality
         assert result["balance_score"] < 0.5  # Low balance
 
-    def test_engagement_participation_rate(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_engagement_participation_rate(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Participation rate should reflect percentage of active members"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -176,7 +183,8 @@ class TestEngagementCalculation:
                 sender_id=members[i % 3].id,  # Only first 3 members
                 receiver_id=members[(i + 1) % 3].id,
                 team_id=team.id,
-                communication_type="face-to-face"
+                communication_type="face-to-face",
+                timestamp=mid_date,
             )
         
         result = calculator.calculate_engagement(team.id, thirty_days_ago, now)
@@ -197,7 +205,7 @@ class TestEngagementCalculation:
         gini = calculator._calculate_gini_coefficient([1, 2, 3, 4, 5])
         assert 0.2 < gini < 0.4
 
-    def test_two_way_communication_detection(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_two_way_communication_detection(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test detection of two-way communication patterns"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -209,14 +217,16 @@ class TestEngagementCalculation:
                 sender_id=members[0].id,
                 receiver_id=members[1].id,
                 team_id=team.id,
-                communication_type="face-to-face"
+                communication_type="face-to-face",
+                timestamp=mid_date,
             )
             # B -> A
             comm_repo.create(
                 sender_id=members[1].id,
                 receiver_id=members[0].id,
                 team_id=team.id,
-                communication_type="face-to-face"
+                communication_type="face-to-face",
+                timestamp=mid_date,
             )
         
         result = calculator.calculate_engagement(team.id, thirty_days_ago, now)
@@ -227,7 +237,7 @@ class TestEngagementCalculation:
 class TestExplorationCalculation:
     """Tests for exploration score calculation"""
 
-    def test_exploration_zero_with_no_cross_team(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_exploration_zero_with_no_cross_team(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Exploration should be 0 when all communications are internal"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -239,7 +249,8 @@ class TestExplorationCalculation:
                 receiver_id=members[1].id,
                 team_id=team.id,
                 communication_type="face-to-face",
-                is_cross_team=0
+                is_cross_team=0,
+                timestamp=mid_date,
             )
         
         result = calculator.calculate_exploration(team.id, thirty_days_ago, now)
@@ -247,7 +258,7 @@ class TestExplorationCalculation:
         assert result["exploration_score"] == 0.0
         assert result["cross_team_communications"] == 0
 
-    def test_exploration_increases_with_cross_team(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_exploration_increases_with_cross_team(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Exploration should increase with cross-team communications"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -260,14 +271,16 @@ class TestExplorationCalculation:
                 receiver_id=members[1].id,
                 team_id=team.id,
                 communication_type="face-to-face",
-                is_cross_team=0
+                is_cross_team=0,
+                timestamp=mid_date,
             )
             # Cross-team
             comm_repo.create(
                 sender_id=members[0].id,
                 team_id=team.id,
                 communication_type="face-to-face",
-                is_cross_team=1
+                is_cross_team=1,
+                timestamp=mid_date,
             )
         
         result = calculator.calculate_exploration(team.id, thirty_days_ago, now)
@@ -276,7 +289,7 @@ class TestExplorationCalculation:
         assert result["cross_team_communications"] == 10
         assert result["exploration_ratio"] == pytest.approx(0.5, rel=0.01)  # 10/20
 
-    def test_exploration_member_participation(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_exploration_member_participation(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test tracking which members are exploring"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -287,13 +300,15 @@ class TestExplorationCalculation:
                 sender_id=members[0].id,
                 team_id=team.id,
                 communication_type="face-to-face",
-                is_cross_team=1
+                is_cross_team=1,
+                timestamp=mid_date,
             )
             comm_repo.create(
                 sender_id=members[1].id,
                 team_id=team.id,
                 communication_type="face-to-face",
-                is_cross_team=1
+                is_cross_team=1,
+                timestamp=mid_date,
             )
         
         result = calculator.calculate_exploration(team.id, thirty_days_ago, now)
@@ -337,7 +352,7 @@ class TestOverallPerformance:
 class TestCalculateAllMetrics:
     """Tests for the main calculate_all_metrics method"""
 
-    def test_calculates_all_three_es(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_calculates_all_three_es(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test that all three E's are calculated"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -349,7 +364,8 @@ class TestCalculateAllMetrics:
                 receiver_id=members[(i + 1) % len(members)].id,
                 team_id=team.id,
                 communication_type="face-to-face",
-                duration_minutes=15
+                duration_minutes=15,
+                timestamp=mid_date,
             )
         
         result = calculator.calculate_all_metrics(
@@ -365,7 +381,7 @@ class TestCalculateAllMetrics:
         assert "overall_score" in result
         assert result["team_id"] == team.id
 
-    def test_saves_to_database_when_requested(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_saves_to_database_when_requested(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test that metrics are saved to database when save_to_db=True"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -376,7 +392,8 @@ class TestCalculateAllMetrics:
                 sender_id=members[0].id,
                 receiver_id=members[1].id,
                 team_id=team.id,
-                communication_type="face-to-face"
+                communication_type="face-to-face",
+                timestamp=mid_date,
             )
         
         result = calculator.calculate_all_metrics(
@@ -387,7 +404,7 @@ class TestCalculateAllMetrics:
         )
         
         # Verify it was saved
-        from data_access.repositories import TeamMetricsRepository
+        from app.data_access.repositories import TeamMetricsRepository
         metrics_repo = TeamMetricsRepository(session)
         saved_metrics = metrics_repo.get_latest_by_team(team.id)
         
@@ -416,15 +433,17 @@ class TestEdgeCases:
     def test_single_member_team(self, session, team_repo, member_repo, comm_repo, thirty_days_ago, now):
         """Test calculation with only one team member"""
         team = team_repo.create("Solo Team", "One member team")
-        member = member_repo.create(
+        member_repo.create(
             name="Solo Member",
             email="solo@test.com",
             team_id=team.id,
-            role="Engineer"
+            role="Engineer",
         )
         
         calculator = ThreeEsCalculator(session)
-        result = calculator.calculate_all_metrics(team.id, thirty_days_ago, now, False)
+        result = calculator.calculate_all_metrics(
+            team.id, thirty_days_ago, now, save_to_db=False
+        )
         
         # Should handle gracefully
         assert result["energy"]["energy_score"] == 0.0
@@ -435,13 +454,15 @@ class TestEdgeCases:
         team = team_repo.create("Empty Team", "No members")
         
         calculator = ThreeEsCalculator(session)
-        result = calculator.calculate_all_metrics(team.id, thirty_days_ago, now, False)
+        result = calculator.calculate_all_metrics(
+            team.id, thirty_days_ago, now, save_to_db=False
+        )
         
         assert result["energy"]["energy_score"] == 0.0
         assert result["engagement"]["engagement_score"] == 0.0
         assert result["exploration"]["exploration_score"] == 0.0
 
-    def test_zero_duration_communications(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_zero_duration_communications(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test handling of communications with no duration"""
         team, members = sample_team
         calculator = ThreeEsCalculator(session)
@@ -452,7 +473,8 @@ class TestEdgeCases:
                 receiver_id=members[1].id,
                 team_id=team.id,
                 communication_type="chat",
-                duration_minutes=0  # Zero duration
+                duration_minutes=0,  # Zero duration
+                timestamp=mid_date,
             )
         
         result = calculator.calculate_energy(team.id, thirty_days_ago, now)

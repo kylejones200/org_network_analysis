@@ -327,11 +327,8 @@ orgnet/
 ├── config.py                  # Configuration constants
 ├── validation.py              # Input validation
 ├── date_utils.py              # Date utilities
-├── formatters.py              # Response formatting
-├── validators.py              # Validation helpers
-├── export_utils.py            # Export utilities
 ├── sample_data.py             # Sample data generator
-├── examples.py                # Usage examples
+├── scripts/examples.py        # Usage examples (run with API server)
 ├── uv.lock                    # Locked dependencies (uv)
 ├── Dockerfile                 # Docker container
 ├── docker-compose.yml         # Multi-container setup

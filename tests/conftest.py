@@ -73,3 +73,9 @@ def now():
 def thirty_days_ago(now):
     """30 days ago datetime fixture"""
     return now - timedelta(days=30)
+
+
+@pytest.fixture
+def mid_date(thirty_days_ago):
+    """Timestamp in the middle of the 30-day range (for comm creation in range)"""
+    return thirty_days_ago + timedelta(days=15)

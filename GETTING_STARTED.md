@@ -66,8 +66,8 @@ cd orgnet
 # Generate sample data
 uv run python -c "from sqlalchemy import create_engine; from sqlalchemy.orm import sessionmaker; from app.sample_data import generate_sample_data; engine = create_engine('sqlite:///orgnet.db'); Session = sessionmaker(bind=engine); session = Session(); generate_sample_data(session, num_teams=3)"
 
-# Run examples
-uv run python -m app.examples
+# Run examples (requires API server running)
+uv run python scripts/examples.py
 ```
 
 You should see output like:

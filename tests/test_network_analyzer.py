@@ -19,7 +19,7 @@ class TestNetworkConstruction:
         assert G.number_of_nodes() == 5  # All members added as nodes
         assert G.number_of_edges() == 0  # No communications = no edges
 
-    def test_network_with_communications(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_network_with_communications(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test network includes communications as edges"""
         team, members = sample_team
         analyzer = NetworkAnalyzer(session)
@@ -29,7 +29,8 @@ class TestNetworkConstruction:
             sender_id=members[0].id,
             receiver_id=members[1].id,
             team_id=team.id,
-            communication_type="face-to-face"
+            communication_type="face-to-face",
+            timestamp=mid_date,
         )
         
         G = analyzer.build_communication_network(team.id, thirty_days_ago, now)
@@ -38,7 +39,7 @@ class TestNetworkConstruction:
         assert G.number_of_edges() >= 1
         assert G.has_edge(members[0].id, members[1].id)
 
-    def test_network_weights_multiple_communications(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_network_weights_multiple_communications(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test that multiple communications increase edge weight"""
         team, members = sample_team
         analyzer = NetworkAnalyzer(session)
@@ -49,7 +50,8 @@ class TestNetworkConstruction:
                 sender_id=members[0].id,
                 receiver_id=members[1].id,
                 team_id=team.id,
-                communication_type="face-to-face"
+                communication_type="face-to-face",
+                timestamp=mid_date,
             )
         
         G = analyzer.build_communication_network(team.id, thirty_days_ago, now)
@@ -60,7 +62,7 @@ class TestNetworkConstruction:
 class TestNetworkMetrics:
     """Tests for network metrics calculation"""
 
-    def test_density_fully_connected(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_density_fully_connected(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test density of fully connected network"""
         team, members = sample_team
         analyzer = NetworkAnalyzer(session)
@@ -73,7 +75,8 @@ class TestNetworkMetrics:
                         sender_id=sender.id,
                         receiver_id=receiver.id,
                         team_id=team.id,
-                        communication_type="face-to-face"
+                        communication_type="face-to-face",
+                        timestamp=mid_date,
                     )
         
         result = analyzer.analyze_network_metrics(team.id, thirty_days_ago, now)
@@ -81,7 +84,7 @@ class TestNetworkMetrics:
         assert result["density"] == pytest.approx(1.0, rel=0.01)
         assert result["is_connected"] == True
 
-    def test_disconnected_network(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_disconnected_network(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test detection of disconnected network"""
         team, members = sample_team
         analyzer = NetworkAnalyzer(session)
@@ -91,14 +94,15 @@ class TestNetworkMetrics:
             sender_id=members[0].id,
             receiver_id=members[1].id,
             team_id=team.id,
-            communication_type="face-to-face"
+            communication_type="face-to-face",
+            timestamp=mid_date,
         )
         
         result = analyzer.analyze_network_metrics(team.id, thirty_days_ago, now)
         
         assert result["is_connected"] == False
 
-    def test_bottleneck_detection(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_bottleneck_detection(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test detection of communication bottlenecks"""
         team, members = sample_team
         analyzer = NetworkAnalyzer(session)
@@ -109,13 +113,15 @@ class TestNetworkMetrics:
                 sender_id=members[i].id,
                 receiver_id=members[2].id,
                 team_id=team.id,
-                communication_type="face-to-face"
+                communication_type="face-to-face",
+                timestamp=mid_date,
             )
             comm_repo.create(
                 sender_id=members[2].id,
                 receiver_id=members[i].id,
                 team_id=team.id,
-                communication_type="face-to-face"
+                communication_type="face-to-face",
+                timestamp=mid_date,
             )
         
         result = analyzer.analyze_network_metrics(team.id, thirty_days_ago, now)
@@ -127,7 +133,7 @@ class TestNetworkMetrics:
 class TestCommunityDetection:
     """Tests for community detection"""
 
-    def test_single_community(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_single_community(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test well-connected team has single community"""
         team, members = sample_team
         analyzer = NetworkAnalyzer(session)
@@ -140,7 +146,8 @@ class TestCommunityDetection:
                         sender_id=sender.id,
                         receiver_id=receiver.id,
                         team_id=team.id,
-                        communication_type="face-to-face"
+                        communication_type="face-to-face",
+                        timestamp=mid_date,
                     )
         
         result = analyzer.detect_communities(team.id, thirty_days_ago, now)
@@ -163,7 +170,7 @@ class TestCommunityDetection:
 class TestCentralityAnalysis:
     """Tests for advanced centrality metrics"""
 
-    def test_hub_identification(self, session, sample_team, comm_repo, thirty_days_ago, now):
+    def test_hub_identification(self, session, sample_team, comm_repo, thirty_days_ago, now, mid_date):
         """Test identification of highly connected members"""
         team, members = sample_team
         analyzer = NetworkAnalyzer(session)
@@ -174,13 +181,15 @@ class TestCentralityAnalysis:
                 sender_id=members[0].id,
                 receiver_id=members[i].id,
                 team_id=team.id,
-                communication_type="face-to-face"
+                communication_type="face-to-face",
+                timestamp=mid_date,
             )
             comm_repo.create(
                 sender_id=members[i].id,
                 receiver_id=members[0].id,
                 team_id=team.id,
-                communication_type="face-to-face"
+                communication_type="face-to-face",
+                timestamp=mid_date,
             )
         
         result = analyzer.calculate_advanced_centrality(team.id, thirty_days_ago, now)

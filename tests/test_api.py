@@ -5,20 +5,20 @@ Tests for Flask API endpoints.
 import pytest
 import json
 from app import create_app
-from app.database import init_db
+from app.config import Config
+
+
+class TestConfig(Config):
+    """Config with in-memory DB for isolated tests."""
+    DATABASE_URL = "sqlite:///:memory:"
+    TESTING = True
+    SECRET_KEY = "test-secret-key"
 
 
 @pytest.fixture
 def app():
-    """Create Flask app for testing"""
-    app = create_app()
-    app.config["TESTING"] = True
-    app.config["DATABASE_URL"] = "sqlite:///:memory:"
-    
-    with app.app_context():
-        init_db(app.config["DATABASE_URL"])
-    
-    yield app
+    """Create Flask app for testing with isolated in-memory DB"""
+    return create_app(config_class=TestConfig)
 
 
 @pytest.fixture
@@ -118,6 +118,64 @@ class TestTeamEndpoints:
         """Test getting team that doesn't exist"""
         response = client.get("/api/teams/99999")
         assert response.status_code == 404
+
+    def test_update_team(self, client):
+        """Test updating a team with valid data"""
+        create_response = client.post(
+            "/api/teams",
+            data=json.dumps({"name": "Update Test Original", "description": "Original desc"}),
+            content_type="application/json",
+        )
+        assert create_response.status_code == 201
+        team_id = json.loads(create_response.data)["id"]
+
+        response = client.put(
+            f"/api/teams/{team_id}",
+            data=json.dumps({"name": "Update Test Updated", "description": "Updated desc"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["name"] == "Update Test Updated"
+        assert data["description"] == "Updated desc"
+        assert data["id"] == team_id
+
+    def test_update_team_rejects_id_overwrite(self, client):
+        """Test that update_team ignores malicious id field (allowlist)"""
+        create_response = client.post(
+            "/api/teams",
+            data=json.dumps({"name": "ID Overwrite Target", "description": "Target"}),
+            content_type="application/json",
+        )
+        assert create_response.status_code == 201
+        team_id = json.loads(create_response.data)["id"]
+
+        response = client.put(
+            f"/api/teams/{team_id}",
+            data=json.dumps({"name": "ID Overwrite Hacked", "id": 99999}),
+            content_type="application/json",
+        )
+        assert response.status_code == 200
+        data = json.loads(response.data)
+        assert data["id"] == team_id
+        assert data["name"] == "ID Overwrite Hacked"
+
+    def test_update_team_validation_empty_name(self, client):
+        """Test update rejects empty name"""
+        create_response = client.post(
+            "/api/teams",
+            data=json.dumps({"name": "Empty Name Validation Team", "description": "Test"}),
+            content_type="application/json",
+        )
+        assert create_response.status_code == 201
+        team_id = json.loads(create_response.data)["id"]
+
+        response = client.put(
+            f"/api/teams/{team_id}",
+            data=json.dumps({"name": ""}),
+            content_type="application/json",
+        )
+        assert response.status_code == 422
 
     def test_delete_team(self, client):
         """Test deleting a team"""
@@ -317,3 +375,20 @@ class TestMetricsEndpoints:
         assert "engagement" in data
         assert "exploration" in data
         assert "overall_score" in data
+
+    def test_calculate_metrics_rejects_invalid_days(self, client):
+        """Test calculate rejects days out of range (1-365)"""
+        team_response = client.post(
+            "/api/teams",
+            data=json.dumps({"name": "Invalid Days Metrics Team", "description": "Test"}),
+            content_type="application/json",
+        )
+        assert team_response.status_code == 201
+        team_id = json.loads(team_response.data)["id"]
+
+        response = client.post(
+            f"/api/calculate/{team_id}",
+            data=json.dumps({"days": 999999}),
+            content_type="application/json",
+        )
+        assert response.status_code == 422

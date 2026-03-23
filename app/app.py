@@ -9,6 +9,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
+from sqlalchemy import text
 from sqlalchemy.orm import sessionmaker, scoped_session
 from sqlalchemy.exc import IntegrityError, OperationalError
 from datetime import datetime, timedelta, timezone
@@ -22,7 +23,6 @@ from .data_access.repositories import (
     TeamMemberRepository,
     CommunicationRepository,
     TeamMetricsRepository,
-    ExternalTeamRepository,
 )
 from .business_logic import ThreeEsCalculator, NetworkAnalyzer
 from .config import Config
@@ -33,6 +33,7 @@ from .validation import (
     CommunicationCreate,
     CommunicationBulkCreate,
     MetricsCalculate,
+    NetworkAnalysisParams,
     validate_request,
 )
 
@@ -46,17 +47,28 @@ def create_app(config_class=Config):
     CORS(app)
 
     # Initialize rate limiting
-    # Get storage URL from environment or use in-memory
+    # Use very high limits when TESTING to avoid flaky performance tests
     storage_uri = os.getenv('RATELIMIT_STORAGE_URL', 'memory://')
-    
+    default_limits = (
+        ["10000 per hour"]  # Effectively unlimited for tests
+        if app.config.get('TESTING', False)
+        else ["200 per day", "50 per hour"]
+    )
+
     limiter = Limiter(
         app=app,
         key_func=get_remote_address,
         storage_uri=storage_uri,
-        default_limits=["200 per day", "50 per hour"],
+        default_limits=default_limits,
         strategy="fixed-window",
         headers_enabled=True,
     )
+
+    # Per-endpoint limits (relaxed when TESTING to avoid flaky performance tests)
+    _testing = app.config.get('TESTING', False)
+    _limit_bulk = "10000 per hour" if _testing else "20 per hour"
+    _limit_calculate = "10000 per hour" if _testing else "10 per hour"
+    _limit_network = "10000 per hour" if _testing else "30 per hour"
 
     # Initialize database
     engine = init_db(app.config["DATABASE_URL"])
@@ -165,25 +177,25 @@ def create_app(config_class=Config):
     def health_check():
         """Health check endpoint for load balancers and monitoring"""
         try:
-            # Test database connection
-            session = Session()
-            session.execute("SELECT 1")
-            session.close()
-            
+            # Test database connection (SQLAlchemy 2.0 requires text() for raw SQL)
+            db_session = Session()
+            db_session.execute(text("SELECT 1"))
+            db_session.close()
+
             return jsonify({
                 "status": "healthy",
                 "service": "orgnet-api",
                 "version": "1.0.0",
-                "database": "connected"
+                "database": "connected",
             }), 200
         except Exception as e:
-            app.logger.error(f"Health check failed: {str(e)}")
+            app.logger.error(f"Health check failed: {e}")
             return jsonify({
                 "status": "unhealthy",
                 "service": "orgnet-api",
                 "version": "1.0.0",
                 "database": "disconnected",
-                "error": str(e)
+                "error": "Database connection failed",
             }), 503
 
     @app.route("/metrics")
@@ -306,9 +318,14 @@ def create_app(config_class=Config):
     @with_session
     def update_team(session, team_id):
         """Update a team"""
-        data = request.get_json()
+        data = request.get_json() or {}
+        validated, errors = validate_request(TeamUpdate, data)
+        if errors:
+            return jsonify({"error": "Validation failed", "details": errors}), 422
+
+        update_data = validated.model_dump(exclude_unset=True)
         repo = TeamRepository(session)
-        team = repo.update(team_id, **data)
+        team = repo.update(team_id, **update_data)
 
         if not team:
             return jsonify({"error": "Team not found"}), 404
@@ -482,7 +499,7 @@ def create_app(config_class=Config):
 
     @app.route("/api/v1/communications/bulk", methods=["POST"])
     @app.route("/api/communications/bulk", methods=["POST"])  # Backward compatibility
-    @limiter.limit("20 per hour")  # Limit bulk operations
+    @limiter.limit(_limit_bulk)
     @with_session
     def create_bulk_communications(session):
         """Create multiple communication records at once"""
@@ -541,23 +558,18 @@ def create_app(config_class=Config):
 
     @app.route("/api/v1/calculate/<int:team_id>", methods=["POST"])
     @app.route("/api/calculate/<int:team_id>", methods=["POST"])  # Backward compatibility
-    @limiter.limit("10 per hour")  # More restrictive for calculation endpoint
+    @limiter.limit(_limit_calculate)
     @with_session
     def calculate_metrics(session, team_id):
         """Calculate Three E's metrics for a team"""
         data = request.get_json() or {}
+        validated, errors = validate_request(MetricsCalculate, data)
+        if errors:
+            return jsonify({"error": "Validation failed", "details": errors}), 422
 
-        # Parse date range
-        days = data.get("days", 30)
-        end_date = datetime.now(timezone.utc)
-        start_date = end_date - timedelta(days=days)
+        end_date = validated.end_date or datetime.now(timezone.utc)
+        start_date = validated.start_date or (end_date - timedelta(days=validated.days or 30))
 
-        if "start_date" in data:
-            start_date = datetime.fromisoformat(data["start_date"])
-        if "end_date" in data:
-            end_date = datetime.fromisoformat(data["end_date"])
-
-        # Calculate metrics
         calculator = ThreeEsCalculator(session)
         results = calculator.calculate_all_metrics(
             team_id=team_id, start_date=start_date, end_date=end_date, save_to_db=True
@@ -596,7 +608,8 @@ def create_app(config_class=Config):
     @with_session
     def get_metrics_history(session, team_id):
         """Get metrics history for a team"""
-        limit = request.args.get("limit", type=int, default=10)
+        raw_limit = request.args.get("limit", type=int, default=10)
+        limit = max(1, min(100, raw_limit)) if raw_limit is not None else 10
         repo = TeamMetricsRepository(session)
         metrics_list = repo.get_by_team(team_id, limit=limit)
 
@@ -638,11 +651,16 @@ def create_app(config_class=Config):
 
     @app.route("/api/v1/network/<int:team_id>", methods=["GET"])
     @app.route("/api/network/<int:team_id>", methods=["GET"])  # Backward compatibility
-    @limiter.limit("30 per hour")  # Network analysis is computationally expensive
+    @limiter.limit(_limit_network)
     @with_session
     def analyze_network(session, team_id):
         """Analyze team communication network"""
-        days = request.args.get("days", type=int, default=30)
+        params, errors = validate_request(
+            NetworkAnalysisParams, {"days": request.args.get("days", type=int, default=30)}
+        )
+        if errors:
+            return jsonify({"error": "Validation failed", "details": errors}), 422
+        days = params.days or 30
         end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
 
@@ -653,11 +671,16 @@ def create_app(config_class=Config):
 
     @app.route("/api/v1/network/<int:team_id>/communities", methods=["GET"])
     @app.route("/api/network/<int:team_id>/communities", methods=["GET"])  # Backward compatibility
-    @limiter.limit("30 per hour")  # Community detection is expensive
+    @limiter.limit(_limit_network)
     @with_session
     def detect_communities(session, team_id):
         """Detect sub-communities and potential silos within the team"""
-        days = request.args.get("days", type=int, default=30)
+        params, errors = validate_request(
+            NetworkAnalysisParams, {"days": request.args.get("days", type=int, default=30)}
+        )
+        if errors:
+            return jsonify({"error": "Validation failed", "details": errors}), 422
+        days = params.days or 30
         end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
 
@@ -668,11 +691,16 @@ def create_app(config_class=Config):
 
     @app.route("/api/v1/network/<int:team_id>/centrality", methods=["GET"])
     @app.route("/api/network/<int:team_id>/centrality", methods=["GET"])  # Backward compatibility
-    @limiter.limit("30 per hour")  # Centrality calculation is expensive
+    @limiter.limit(_limit_network)
     @with_session
     def analyze_centrality(session, team_id):
         """Calculate advanced centrality metrics to identify key players"""
-        days = request.args.get("days", type=int, default=30)
+        params, errors = validate_request(
+            NetworkAnalysisParams, {"days": request.args.get("days", type=int, default=30)}
+        )
+        if errors:
+            return jsonify({"error": "Validation failed", "details": errors}), 422
+        days = params.days or 30
         end_date = datetime.now(timezone.utc)
         start_date = end_date - timedelta(days=days)
 
@@ -688,6 +716,6 @@ if __name__ == "__main__":
     app = create_app()
     app.run(
         host=app.config.get("API_HOST", "0.0.0.0"),
-        port=app.config.get("API_PORT", 5000),
-        debug=app.config.get("DEBUG", True),
+        port=int(app.config.get("API_PORT", 5000)),
+        debug=app.config.get("DEBUG", False),
     )

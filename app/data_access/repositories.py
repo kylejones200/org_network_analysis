@@ -38,12 +38,14 @@ class TeamRepository:
         """Get all teams"""
         return self.session.query(Team).all()
 
+    _UPDATE_ALLOWED = {"name", "description"}
+
     def update(self, team_id: int, **kwargs) -> Optional[Team]:
-        """Update team attributes"""
+        """Update team attributes. Only name and description are updatable."""
         team = self.get_by_id(team_id)
         if team:
             for key, value in kwargs.items():
-                if hasattr(team, key):
+                if key in self._UPDATE_ALLOWED:
                     setattr(team, key, value)
             self.session.commit()
             self.session.refresh(team)
@@ -126,9 +128,10 @@ class CommunicationRepository:
         is_group_communication: int = 0,
         is_cross_team: int = 0,
         message_content: str = None,
+        timestamp: datetime = None,
     ) -> Communication:
         """Create a new communication record"""
-        comm = Communication(
+        attrs = dict(
             sender_id=sender_id,
             receiver_id=receiver_id,
             team_id=team_id,
@@ -138,6 +141,9 @@ class CommunicationRepository:
             is_cross_team=is_cross_team,
             message_content=message_content,
         )
+        if timestamp is not None:
+            attrs["timestamp"] = timestamp
+        comm = Communication(**attrs)
         self.session.add(comm)
         self.session.commit()
         self.session.refresh(comm)
