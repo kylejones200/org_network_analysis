@@ -2,6 +2,15 @@
 Pytest fixtures and configuration for tests.
 """
 
+import sys
+from pathlib import Path
+
+# netsmith uses a src/ layout but Maturin wheels don't include the Python source.
+# Add the src/ directory directly so netsmith.ona is importable in tests.
+_netsmith_src = Path(__file__).parents[2] / "netsmith" / "src"
+if _netsmith_src.exists() and str(_netsmith_src) not in sys.path:
+    sys.path.insert(0, str(_netsmith_src))
+
 import pytest
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import create_engine

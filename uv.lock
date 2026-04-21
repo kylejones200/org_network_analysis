@@ -906,6 +906,23 @@ wheels = [
 ]
 
 [[package]]
+name = "netsmith"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8f/57/041de5ca3c1e66578d9a4576935eb20271a9d987c623d6a73ac45582bf1e/netsmith-0.1.1.tar.gz", hash = "sha256:06d984346b677277e09d9981b35c302a51794c21eb9305f11d3bd819c651d1fd", size = 11827, upload-time = "2026-01-13T00:59:17.592Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/32/c2/7ad25a249e2b233df9b43a5bfe795a00d0da99faeac566f0a7e16d5ebc53/netsmith-0.1.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:580b6bc172eb3efbef3428ce565a9f6c0e2b8e843230b8c2bdd2ea381dccb8ac", size = 225545, upload-time = "2026-01-13T00:59:07.281Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/5b/f567fb27e6bbe96c3f200543fdb19538f27b2421a2f90aed8b7976adeb8d/netsmith-0.1.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:0a26f0a08bcc89ddae4e18b1de466b7920291ecdc2f647902cf1bfca0175fead", size = 260422, upload-time = "2026-01-13T00:59:09.173Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/26/5cfc9e476bd85aa173159b3e60b1c3b9d5aa2d8c48e4b804b9eac3360746/netsmith-0.1.1-cp312-cp312-win_amd64.whl", hash = "sha256:4f993d2c5e60d8d6fb0dfe40068c275a8d8202290f47cec437d1b857adfeb5d9", size = 155870, upload-time = "2026-01-13T00:59:11.19Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/54/679ff30c6e3fc854c16983b250655b4b995f9f865fad6c9faeefb20dbac6/netsmith-0.1.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:abec15a16bae8fad0b9b51ea2fee665e3878676433cd6ad22b68d9c6c738c456", size = 225545, upload-time = "2026-01-13T00:59:12.983Z" },
+    { url = "https://files.pythonhosted.org/packages/14/5c/4ea63b1d52c9720e6efea1d89229cc2fa70db275c82b385084ef644014ba/netsmith-0.1.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:ef67fc6ac4bc6c3ddf84595b9394da5527f4223ed3af06460a90ff4e1bf6a6cb", size = 260424, upload-time = "2026-01-13T00:59:14.78Z" },
+    { url = "https://files.pythonhosted.org/packages/f0/32/56283d39afa9bd8dddb33f138036652c3fc7a3fd0f5a2fdac047dd28c635/netsmith-0.1.1-cp313-cp313-win_amd64.whl", hash = "sha256:55eb7467ebe81697a3a858aeaf7958eedf28fa9aa0f76515826a596f1265f620", size = 155867, upload-time = "2026-01-13T00:59:16.319Z" },
+]
+
+[[package]]
 name = "networkx"
 version = "3.6.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1041,6 +1058,7 @@ dependencies = [
     { name = "flask" },
     { name = "flask-cors" },
     { name = "flask-limiter" },
+    { name = "netsmith" },
     { name = "networkx" },
     { name = "numpy" },
     { name = "pandas" },
@@ -1072,6 +1090,7 @@ requires-dist = [
     { name = "flask", specifier = ">=3.0.0" },
     { name = "flask-cors", specifier = ">=4.0.0" },
     { name = "flask-limiter", specifier = ">=3.5.0" },
+    { name = "netsmith", specifier = ">=0.1.1" },
     { name = "networkx", specifier = ">=3.2.1" },
     { name = "numpy", specifier = ">=1.26.2" },
     { name = "pandas", specifier = ">=2.1.4" },
