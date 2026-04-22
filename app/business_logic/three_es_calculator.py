@@ -14,8 +14,12 @@ import networkx as nx
 import numpy as np
 from sqlalchemy.orm import Session
 
+from netsmith.api.compute import communities as ns_communities
+from netsmith.api.compute import degree as ns_degree
+from netsmith.api.compute import pagerank as ns_pagerank
+from netsmith.engine.contracts import EdgeList
 from netsmith.ona import Communication as NsComm
-from netsmith.ona import score_team, detect_silos
+from netsmith.ona import detect_silos, score_team
 from netsmith.ona.three_es import gini_coefficient
 
 from ..data_access.repositories import (
@@ -173,104 +177,223 @@ class ThreeEsCalculator:
 
 
 # ── NetworkAnalyzer ───────────────────────────────────────────────────────────
-# Kept intact — uses networkx directly since this is graph topology, not Three E's math.
+# Uses netsmith for degree, PageRank, and Louvain community detection.
+# NetworkX retained only for betweenness/eigenvector (not yet in netsmith API).
 
 class NetworkAnalyzer:
-    """Graph topology analysis — centrality, bottlenecks, community detection."""
+    """Graph topology analysis powered by netsmith + NetworkX."""
 
     def __init__(self, session: Session):
         self.session = session
         self.comm_repo = CommunicationRepository(session)
         self.member_repo = TeamMemberRepository(session)
 
-    def build_communication_network(
-        self,
-        team_id: int,
-        start_date: datetime = None,
-        end_date: datetime = None,
-    ) -> nx.Graph:
+    # ── Internal builders ─────────────────────────────────────────────────────
+
+    def _load_data(
+        self, team_id: int, start_date: datetime, end_date: datetime
+    ) -> tuple[list, list, dict[int, dict]]:
+        """Return (members, communications, node_meta) for a team + window."""
         members = self.member_repo.get_by_team(team_id)
-        communications = self.comm_repo.get_by_team(team_id, start_date, end_date)
+        comms = self.comm_repo.get_by_team(team_id, start_date, end_date)
+        node_meta = {m.id: {"name": m.name, "role": m.role} for m in members}
+        return members, comms, node_meta
 
+    def _to_edge_list(
+        self, members: list, comms: list
+    ) -> tuple[EdgeList | None, dict[int, int], dict[int, int]]:
+        """
+        Build a netsmith EdgeList from ORM objects.
+
+        Returns (EdgeList | None, id_to_idx, idx_to_id).
+        None when there are no edges.
+        """
+        member_set = {m.id for m in members}
+        id_to_idx = {mid: i for i, mid in enumerate(sorted(member_set))}
+        idx_to_id = {i: mid for mid, i in id_to_idx.items()}
+
+        edge_weights: dict[tuple[int, int], int] = {}
+        for c in comms:
+            if c.receiver_id and c.receiver_id in member_set:
+                a, b = id_to_idx[c.sender_id], id_to_idx[c.receiver_id]
+                key = (min(a, b), max(a, b))  # canonical undirected key
+                edge_weights[key] = edge_weights.get(key, 0) + 1
+
+        if not edge_weights:
+            return None, id_to_idx, idx_to_id
+
+        u = np.array([k[0] for k in edge_weights], dtype=np.int64)
+        v = np.array([k[1] for k in edge_weights], dtype=np.int64)
+        w = np.array(list(edge_weights.values()), dtype=np.float64)
+        return EdgeList(u=u, v=v, w=w, directed=False, n_nodes=len(members)), id_to_idx, idx_to_id
+
+    def _to_nx(self, members: list, comms: list) -> nx.Graph:
+        """Build a NetworkX graph (used only for betweenness/eigenvector)."""
+        member_set = {m.id for m in members}
         G = nx.Graph()
-        for member in members:
-            G.add_node(member.id, name=member.name, role=member.role)
-
-        member_ids = {m.id for m in members}
-        for comm in communications:
-            if comm.receiver_id and comm.receiver_id in member_ids:
-                if G.has_edge(comm.sender_id, comm.receiver_id):
-                    G[comm.sender_id][comm.receiver_id]["weight"] += 1
+        for m in members:
+            G.add_node(m.id, name=m.name, role=m.role)
+        for c in comms:
+            if c.receiver_id and c.receiver_id in member_set:
+                if G.has_edge(c.sender_id, c.receiver_id):
+                    G[c.sender_id][c.receiver_id]["weight"] += 1
                 else:
-                    G.add_edge(comm.sender_id, comm.receiver_id, weight=1)
+                    G.add_edge(c.sender_id, c.receiver_id, weight=1)
         return G
+
+    # ── Public API ────────────────────────────────────────────────────────────
+
+    def build_communication_network(
+        self, team_id: int, start_date: datetime = None, end_date: datetime = None
+    ) -> nx.Graph:
+        """Return a NetworkX graph of member communications (legacy public API)."""
+        members, comms, _ = self._load_data(team_id, start_date, end_date)
+        return self._to_nx(members, comms)
 
     def analyze_network_metrics(
         self, team_id: int, start_date: datetime = None, end_date: datetime = None
     ) -> Dict:
-        G = self.build_communication_network(team_id, start_date, end_date)
-        if G.number_of_nodes() == 0:
+        members, comms, node_meta = self._load_data(team_id, start_date, end_date)
+        if not members:
             return {"error": "No data available for analysis"}
 
-        density = nx.density(G)
+        el, id_to_idx, idx_to_id = self._to_edge_list(members, comms)
+        n_nodes = len(members)
+        n_edges = len(el.u) if el is not None else 0
+        density = round((2 * n_edges) / max(n_nodes * (n_nodes - 1), 1), 3)
+
+        if el is None:
+            return {"density": density, "num_nodes": n_nodes, "num_edges": 0,
+                    "note": "No edges — members have not communicated"}
+
+        # netsmith: degree sequence
+        degrees = ns_degree(el)
+
+        # NetworkX: betweenness (not yet in netsmith public API)
+        G = self._to_nx(members, comms)
         try:
             betweenness = nx.betweenness_centrality(G)
-            closeness = nx.closeness_centrality(G)
-            most_central = max(betweenness.items(), key=lambda x: x[1]) if betweenness else (None, 0)
             bv = np.array(list(betweenness.values()))
+            most_central = max(betweenness.items(), key=lambda x: x[1])
             bottlenecks = [n for n, c in betweenness.items() if c > bv.mean() + bv.std()]
             return {
-                "density": round(density, 3),
+                "density": density,
                 "is_connected": nx.is_connected(G),
-                "num_nodes": G.number_of_nodes(),
-                "num_edges": G.number_of_edges(),
+                "num_nodes": n_nodes,
+                "num_edges": n_edges,
+                "avg_degree": round(float(degrees.mean()), 2),
                 "most_central_member_id": most_central[0],
                 "centrality_score": round(most_central[1], 3),
                 "potential_bottlenecks": bottlenecks,
                 "avg_betweenness": round(float(bv.mean()), 3),
             }
-        except (nx.NetworkXError, nx.PowerIterationFailedConvergence, ValueError) as e:
-            return {
-                "density": round(density, 3),
-                "num_nodes": G.number_of_nodes(),
-                "num_edges": G.number_of_edges(),
-                "note": f"Network too sparse for full analysis: {e}",
-            }
+        except (nx.NetworkXError, ValueError) as e:
+            return {"density": density, "num_nodes": n_nodes, "num_edges": n_edges,
+                    "avg_degree": round(float(degrees.mean()), 2),
+                    "note": f"Network too sparse for full analysis: {e}"}
 
     def detect_communities(
         self, team_id: int, start_date: datetime = None, end_date: datetime = None
     ) -> Dict:
-        from networkx.algorithms import community
-
-        G = self.build_communication_network(team_id, start_date, end_date)
-        if G.number_of_nodes() < 3:
+        members, comms, node_meta = self._load_data(team_id, start_date, end_date)
+        if len(members) < 3:
             return {"error": "Need at least 3 members for community detection"}
 
-        try:
-            communities = community.greedy_modularity_communities(G)
-            modularity = community.modularity(G, communities)
-            community_list = [
-                {
-                    "community_id": i + 1,
-                    "member_ids": list(comm),
-                    "member_names": [G.nodes[n]["name"] for n in comm if "name" in G.nodes[n]],
-                    "size": len(comm),
-                }
-                for i, comm in enumerate(communities)
-            ]
-            return {
-                "num_communities": len(communities),
-                "communities": community_list,
-                "modularity": round(modularity, 3),
-                "is_siloed": modularity > 0.4,
-                "interpretation": self._interpret_communities(
-                    len(communities), modularity, G.number_of_nodes()
-                ),
-            }
-        except Exception as e:
-            return {"error": f"Community detection failed: {e}"}
+        el, id_to_idx, idx_to_id = self._to_edge_list(members, comms)
+        if el is None:
+            return {"error": "No edges — members have not communicated"}
 
-    def _interpret_communities(self, num_communities: int, modularity: float, _: int) -> str:
+        # netsmith: Louvain community detection
+        community_ids = ns_communities(el, method="louvain")  # shape (n_nodes,)
+
+        # Group idx → community
+        groups: dict[int, list[int]] = {}
+        for idx, cid in enumerate(community_ids):
+            groups.setdefault(int(cid), []).append(idx_to_id[idx])
+
+        community_list = [
+            {
+                "community_id": i + 1,
+                "member_ids": member_ids,
+                "member_names": [node_meta[mid]["name"] for mid in member_ids],
+                "size": len(member_ids),
+            }
+            for i, member_ids in enumerate(groups.values())
+        ]
+
+        # Modularity via NetworkX (netsmith communities() doesn't return it directly)
+        G = self._to_nx(members, comms)
+        try:
+            from networkx.algorithms.community import modularity as nx_modularity
+            nx_comms = [set(c["member_ids"]) for c in community_list]
+            mod = round(nx_modularity(G, nx_comms), 3)
+        except Exception:
+            mod = 0.0
+
+        return {
+            "num_communities": len(community_list),
+            "communities": community_list,
+            "modularity": mod,
+            "is_siloed": mod > 0.4,
+            "interpretation": self._interpret_communities(len(community_list), mod),
+        }
+
+    def calculate_advanced_centrality(
+        self, team_id: int, start_date: datetime = None, end_date: datetime = None
+    ) -> Dict:
+        members, comms, node_meta = self._load_data(team_id, start_date, end_date)
+        if not members:
+            return {"error": "No data available"}
+
+        el, id_to_idx, idx_to_id = self._to_edge_list(members, comms)
+        if el is None:
+            return {"error": "No edges — members have not communicated"}
+
+        # netsmith: degree + PageRank (vectorised, Rust-accelerated when available)
+        degrees = ns_degree(el)
+        pr_scores = ns_pagerank(el)
+
+        n = len(members)
+        max_degree = max(n - 1, 1)
+        degree_cent  = {idx_to_id[i]: round(float(degrees[i]) / max_degree, 3) for i in range(n)}
+        pagerank_cent = {idx_to_id[i]: round(float(pr_scores[i]), 4) for i in range(n)}
+
+        # NetworkX: betweenness + eigenvector (not yet in netsmith)
+        G = self._to_nx(members, comms)
+        try:
+            betweenness_cent = nx.betweenness_centrality(G)
+            closeness_cent = nx.closeness_centrality(G)
+            try:
+                eigenvector_cent = nx.eigenvector_centrality(G, max_iter=1000)
+            except (nx.PowerIterationFailedConvergence, nx.NetworkXError):
+                eigenvector_cent = {n: 0.0 for n in G.nodes()}
+        except Exception:
+            betweenness_cent = closeness_cent = eigenvector_cent = {m.id: 0.0 for m in members}
+
+        top_n = min(3, n)
+
+        def member_info(mid: int) -> dict:
+            return {"member_id": mid, **node_meta.get(mid, {"name": f"Member {mid}", "role": "Unknown"})}
+
+        return {
+            "centrality_metrics": {
+                "degree":      degree_cent,
+                "pagerank":    pagerank_cent,
+                "betweenness": {k: round(v, 3) for k, v in betweenness_cent.items()},
+                "closeness":   {k: round(v, 3) for k, v in closeness_cent.items()},
+                "eigenvector": {k: round(v, 3) for k, v in eigenvector_cent.items()},
+            },
+            "key_roles": {
+                "connectors":  [{**member_info(k), "score": round(v, 3)} for k, v in sorted(betweenness_cent.items(), key=lambda x: x[1], reverse=True)[:top_n]],
+                "influencers": [{**member_info(k), "score": round(v, 4)} for k, v in sorted(pagerank_cent.items(),    key=lambda x: x[1], reverse=True)[:top_n]],
+                "hubs":        [{**member_info(k), "score": round(v, 3)} for k, v in sorted(degree_cent.items(),      key=lambda x: x[1], reverse=True)[:top_n]],
+            },
+            "insights": self._centrality_insights(degree_cent, betweenness_cent, pagerank_cent),
+        }
+
+    # ── Interpretation helpers ────────────────────────────────────────────────
+
+    def _interpret_communities(self, num_communities: int, modularity: float) -> str:
         if num_communities == 1:
             return "Team is well-integrated with no distinct sub-groups."
         interpretations = [
@@ -280,52 +403,20 @@ class NetworkAnalyzer:
         ]
         return next(msg for cond, msg in interpretations if cond)
 
-    def calculate_advanced_centrality(
-        self, team_id: int, start_date: datetime = None, end_date: datetime = None
-    ) -> Dict:
-        G = self.build_communication_network(team_id, start_date, end_date)
-        if G.number_of_nodes() == 0:
-            return {"error": "No data available"}
-
-        try:
-            degree_cent = nx.degree_centrality(G)
-            betweenness_cent = nx.betweenness_centrality(G)
-            closeness_cent = nx.closeness_centrality(G)
-            try:
-                eigenvector_cent = nx.eigenvector_centrality(G, max_iter=1000)
-            except (nx.PowerIterationFailedConvergence, nx.NetworkXError):
-                eigenvector_cent = {n: 0.0 for n in G.nodes()}
-
-            top_n = min(3, G.number_of_nodes())
-
-            def member_info(mid):
-                return {"member_id": mid, "name": G.nodes[mid].get("name", f"Member {mid}"), "role": G.nodes[mid].get("role", "Unknown")}
-
-            return {
-                "centrality_metrics": {
-                    "degree":      {k: round(v, 3) for k, v in degree_cent.items()},
-                    "betweenness": {k: round(v, 3) for k, v in betweenness_cent.items()},
-                    "closeness":   {k: round(v, 3) for k, v in closeness_cent.items()},
-                    "eigenvector": {k: round(v, 3) for k, v in eigenvector_cent.items()},
-                },
-                "key_roles": {
-                    "connectors":  [{**member_info(k), "score": round(v, 3)} for k, v in sorted(betweenness_cent.items(), key=lambda x: x[1], reverse=True)[:top_n]],
-                    "influencers": [{**member_info(k), "score": round(v, 3)} for k, v in sorted(eigenvector_cent.items(), key=lambda x: x[1], reverse=True)[:top_n]],
-                    "hubs":        [{**member_info(k), "score": round(v, 3)} for k, v in sorted(degree_cent.items(),      key=lambda x: x[1], reverse=True)[:top_n]],
-                },
-                "insights": self._centrality_insights(degree_cent, betweenness_cent),
-            }
-        except Exception as e:
-            return {"error": f"Centrality calculation failed: {e}"}
-
-    def _centrality_insights(self, degree_cent: Dict, betweenness_cent: Dict) -> List[str]:
+    def _centrality_insights(
+        self, degree_cent: Dict, betweenness_cent: Dict, pagerank_cent: Dict
+    ) -> List[str]:
         insights = []
-        if betweenness_cent and max(betweenness_cent.values()) > 0.5:
+        if betweenness_cent and max(betweenness_cent.values(), default=0) > 0.5:
             insights.append("⚠️ Network is highly centralized — consider distributing communication responsibilities")
-        isolated = sum(1 for v in degree_cent.values() if v == 0) if degree_cent else 0
+        isolated = sum(1 for v in degree_cent.values() if v == 0)
         if isolated:
             insights.append(f"⚠️ {isolated} member(s) are isolated with no connections")
         bv = np.array(list(betweenness_cent.values())) if betweenness_cent else np.array([])
         if bv.size > 3 and bv.mean() > 0 and bv.std() / bv.mean() < 0.5:
             insights.append("✅ Communication responsibility is well-distributed across team")
+        # PageRank concentration check
+        pr = np.array(list(pagerank_cent.values())) if pagerank_cent else np.array([])
+        if pr.size > 1 and float(pr.max()) > 3.0 / pr.size:
+            insights.append("⚠️ Influence is concentrated — one or few members dominate information flow")
         return insights or ["Network structure appears healthy"]
