@@ -12,6 +12,15 @@ This application helps organizations measure and improve team performance by ana
 2. **Engagement** - The degree of interaction and balanced contribution to group discussions
 3. **Exploration** - The extent to which team members engage with other teams and share findings
 
+## Anomaly detection (anomsmith)
+
+The library exposes **plain Python** entry points you can call from your own HTTP service, worker, or notebook (this repo does not ship a web server):
+
+- **`detect_team_metric_anomalies`** — unusual points in stored ``TeamMetrics`` history (overall / per-E scores over time).
+- **`detect_team_network_structural_anomalies`** — unusual members vs the team on a static communication graph (structural features plus optional NetworkX centralities, then isolation forest + quantile threshold).
+
+Install **anomsmith >= 0.0.3** from PyPI, or point your environment at a local checkout until that release is published. NetworkX is already a core dependency here, so graph metrics are merged when ``include_networkx_metrics=True`` (default).
+
 ## Architecture
 
 The application follows a clean 4-layer architecture pattern:
